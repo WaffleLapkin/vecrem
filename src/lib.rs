@@ -78,6 +78,10 @@ use core::ptr;
 /// The main method of this struct is [`next`] which returns [`Entry`] which can
 /// be used to mutate the vec.
 ///
+/// [`skip`]: Entry::skip
+/// [`VecDeque`]: alloc::collections::VecDeque
+/// [`next`]: Removing::next
+///
 /// ## Examples
 ///
 /// ```
@@ -116,6 +120,8 @@ use core::ptr;
 /// not guaranteed (see [`mem::forget`]). As such, [`Removing`] sets vec's len
 /// to `0` (and restores it in `Drop`), this means that if [`Removing`] gets
 /// leaked or forgotten - the elements of the vectore are gone too.
+///
+/// [`mem::forget`]: core::mem::forget
 pub struct Removing<'a, T> {
     // Type invariants:
     // - vec.capacity() >= len
@@ -167,6 +173,10 @@ impl<'a, T> Removing<'a, T> {
 
     /// Return `true` if all elements of the underling vector were either
     /// [`skip`]ed or [`remove`]d (i.e.: when [`next`] will return `Some(_)`)
+    ///
+    /// [`skip`]: Entry::skip
+    /// [`remove`]: Entry::remove
+    /// [`next`]: Removing::next
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.curr >= self.len
@@ -222,6 +232,11 @@ impl<T> Drop for Removing<'_, T> {
 /// the `Removing::next` method will yield the same entry again.
 ///
 /// The only way to get this struct is to call [`Removing::next`] method.
+///
+/// [`remove`]: Entry::remove
+/// [`skip`]: Entry::skip
+/// [read]: Entry::value
+/// [mutate]: Entry::value_mut
 #[must_use = "You should either remove an entry, or skip it"]
 pub struct Entry<'a, 'rem, T> {
     rem: &'a mut Removing<'rem, T>,
@@ -293,7 +308,10 @@ impl<T> Entry<'_, '_, T> {
     }
 }
 
-/// Extension for [`Vec`](alloc::Vec) which adds [`removing`] method
+/// Extension for [`Vec`] which adds [`removing`] method
+///
+/// [`Vec`]: alloc::vec::Vec
+/// [`removing`]: VecExt::removing
 pub trait VecExt<T> {
     /// Creates new [`Removing`] instance from given vec.
     fn removing(&mut self) -> Removing<T>;
