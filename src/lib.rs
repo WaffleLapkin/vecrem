@@ -156,6 +156,7 @@ impl<'a, T> Removing<'a, T> {
 
     /// Returns [`Entry`] for the next element.
     #[inline]
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Option<Entry<'_, 'a, T>> {
         if self.is_empty() {
             None
@@ -346,9 +347,9 @@ mod tests {
         let mut rem = vec.removing();
         let mut timeout = 0..100;
 
-        while let Some(_) = rem.next().zip(timeout.next()) {}
+        while rem.next().is_some() && timeout.next().is_some() {}
 
-        assert!(timeout.is_empty());
+        assert_eq!(timeout.len(), 0);
     }
 
     #[test]
@@ -357,11 +358,11 @@ mod tests {
         let mut rem = vec.removing();
         let mut timeout = 0..100;
 
-        while let Some((entry, _)) = rem.next().zip(timeout.next()) {
+        while let (Some(entry), Some(_)) = (rem.next(), timeout.next()) {
             mem::forget(entry)
         }
 
-        assert!(timeout.is_empty());
+        assert_eq!(timeout.len(), 0);
     }
 
     #[test]

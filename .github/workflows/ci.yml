@@ -22,12 +22,16 @@ jobs:
         include:
           - rust: stable
             features: ""
+            test_args: "--tests"
           - rust: beta
             features: ""
+            test_args: "--tests"
           - rust: nightly
             features: "--all-features"
+            test_args: ""
           - rust: 1.36.0
             features: ""
+            test_args: "--tests"
 
     steps:
       - uses: actions/checkout@v1
@@ -113,4 +117,4 @@ jobs:
       if: matrix.rust == 'miri'
       with:
         command: miri
-        args: test
+        args: test -- -Zmiri-ignore-leaks
