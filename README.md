@@ -9,4 +9,4 @@ Cursor-like helper which allows removing elements from vector without moving the
 vecrem = "0.1"
 ```
 
-_Compiler support: requires rustc 1.36+_
+_Compiler support: requires rustc 1.47+_
