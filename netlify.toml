@@ -1,5 +1,4 @@
 [build]
-[build] 
 command = "rustup install nightly --profile minimal && cargo +nightly doc --all-features --no-deps && cp -r target/doc _netlify_out"
 environment = { RUSTDOCFLAGS= "--cfg docsrs" } 
 publish = "_netlify_out" 
