@@ -17,7 +17,7 @@ jobs:
           - stable
           - beta
           - nightly
-          - 1.36.0
+          - 1.47.0
     
         include:
           - rust: stable
