@@ -57,7 +57,7 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use core::{mem::ManuallyDrop, ptr, ptr::NonNull};
+use core::{mem::ManuallyDrop, ptr};
 
 // FIXME(waffle): add support for backwards iteration
 
@@ -124,27 +124,15 @@ use core::{mem::ManuallyDrop, ptr, ptr::NonNull};
 /// [`mem::forget`]: core::mem::forget
 pub struct Removing<'a, T> {
     // Type invariants:
-    // - `vec`'s len set to 0, so it's safe to do anything with it's buf (it's crucial for
-    //   forget-safety, similar to Vec::drain behaviour)
-    // - `slot` is pointing into vec's buffer
-    // - `curr` and `end` are pointing into vec's buffer or 1 item past vec's buffer
+    // - vec.capacity() >= len
+    // - vec[..slot] is initialized (note: dye to safety guarantees vec.len is set to 0, so this is
+    //   not 'real' indexing)
+    // - vec[curr..len] is initialized
+    // - vec[..len] is the same allocation
     vec: &'a mut Vec<T>,
-
-    // Derived from `vec`
-    /// Points to the start of the buffer
-    #[cfg(all(x, not(x)))]
-    _start: NonNull<T>,
-
-    /// Points to the first empty 'slot'. If no items were removed, then points
-    /// to the same item as `curr`. Otherwise pints to the first empty
-    /// place.
-    slot: NonNull<T>,
-
-    /// Points to the next item that will be yilded.
-    curr: NonNull<T>,
-
-    /// Points one element past the last element
-    end: NonNull<T>,
+    slot: usize,
+    curr: usize,
+    len: usize,
     /* Example of how this works, step-by-step:
      *
      * Imagine vec with items A-F:
@@ -154,40 +142,38 @@ pub struct Removing<'a, T> {
      * 1. `Removing` is created
      *
      * [A, B, C, D, E, F]
-     *  \                ^-- end
-     *  start, curr, slot
+     *  \
+     *  curr, slot
      *
      * 2. `.next()` is used, entry is not removed
      *
-     *       curr, slot
-     *      /
      * [A, B, C, D, E, F]
-     *  \                ^-- end
-     *  start
+     *     \
+     *      curr, slot
      *
      * 3. `.next().remove()`
      *
      *       slot
      *      /
      * [A, _, C, D, E, F]
-     *  \     \          ^-- end
-     * start   curr
+     *        \
+     *         curr
      *
      * 4. `.next().remove()`
      *
      *       slot
      *      /
      * [A, _, _, D, E, F]
-     *  \        \       ^-- end
-     * start      curr
+     *           \
+     *            curr
      *
      * 5. `.next()`
      *
      *          slot
      *         /
      * [A, D, _, _, E, F]
-     *  \           \    ^-- end
-     * start         curr
+     *              \
+     *               curr
      *
      * 5. Removing::drop moves the rest of elements & restores `vec`'s len (in this case to 4):
      *
@@ -212,17 +198,11 @@ impl<'a, T> Removing<'a, T> {
             vec.set_len(0);
         }
 
-        let start = unsafe {
-            let ptr = vec.as_mut_ptr();
-            debug_assert!(!ptr.is_null());
-            NonNull::new_unchecked(ptr)
-        };
-
         Self {
             vec,
-            slot: start,
-            curr: start,
-            end: unsafe { NonNull::new_unchecked(start.as_ptr().add(len)) },
+            slot: 0,
+            curr: 0,
+            len,
         }
     }
 
@@ -255,16 +235,7 @@ impl<'a, T> Removing<'a, T> {
     /// assert_eq!(rem.len(), 4);
     /// ```
     pub fn len(&self) -> usize {
-        unsafe {
-            debug_assert!(self.curr.as_ptr() as usize <= self.end.as_ptr() as usize);
-
-            // ## Safety
-            //
-            // Both `curr` and `end` are pointing into vec's buffer/one element past it.
-            //
-            // `curr <= end`
-            self.end.as_ptr().offset_from(self.curr.as_ptr()) as _
-        }
+        self.len - self.curr
     }
 
     /// Return `true` if all elements of the underling vector were either
@@ -274,33 +245,48 @@ impl<'a, T> Removing<'a, T> {
     /// [`next`]: Removing::next
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.curr == self.end
+        self.curr == self.len
     }
 
-    fn start(&mut self) -> NonNull<T> {
-        unsafe {
-            // ## Safety
-            //
-            // vec's ptr is never null
-            NonNull::new_unchecked(self.vec.as_mut_ptr())
-        }
+    // private
+
+    /// ## Safety
+    ///
+    /// offset **must** be `<= vec.capacity()`
+    unsafe fn ptr_mut(&mut self, offset: usize) -> *mut T {
+        // Safety must be uphold be the caller
+        self.vec.as_mut_ptr().add(offset)
+    }
+
+    fn slot_mut(&mut self) -> *mut T {
+        // ## Safety
+        //
+        // `slot` always points to the content of the vector
+        unsafe { self.ptr_mut(self.slot) }
+    }
+
+    fn curr_mut(&mut self) -> *mut T {
+        // ## Safety
+        //
+        // `curr` always points to the content of the vector
+        unsafe { self.ptr_mut(self.curr) }
     }
 }
 
 impl<T> Drop for Removing<'_, T> {
     fn drop(&mut self) {
         unsafe {
-            let tail_len = self.len();
+            let len = self.len();
 
-            // Copy the tail
-            // [A, B, -, -, -, C, D, E, F] => [A, B, C, D, E, F, D*, E*, F*]
-            // * logically this memory is uninitialized i.e. it's a move
-            ptr::copy(self.curr.as_ptr(), self.slot.as_ptr(), tail_len);
-
-            let head_len = self.slot.as_ptr().offset_from(self.start().as_ptr()) as usize;
+            if len != 0 {
+                // Copy the tail
+                // [A, B, -, -, -, C, D, E, F] => [A, B, C, D, E, F, D*, E*, F*]
+                // * logically this memory is uninitialized i.e. it's a move
+                ptr::copy(self.curr_mut(), self.slot_mut(), len);
+            }
 
             // Slot points to the first uninitialized element
-            self.vec.set_len(head_len + tail_len);
+            self.vec.set_len(self.slot + len)
         }
     }
 }
@@ -328,16 +314,16 @@ impl<T> Entry<'_, '_, T> {
         let mut this = ManuallyDrop::new(self);
 
         unsafe {
-            // ## Safety
-            //
-            // `curr` points into initialized element by type invariants
-            let ret = ptr::read(this.rem.curr.as_ptr());
+            let curr = this.curr_mut();
+            this.rem.curr += 1;
 
+            // This read logically uninitializes mem behind `curr` ptr, but we've just moved
+            // it, so it's ok.
+            //
             // ## Safety
             //
-            // `curr` points into Vec's buffer, so +1 can't be UB
-            this.rem.curr = add(this.rem.curr, 1);
-            ret
+            // Pointer is valid for reads by `Removing` invatiants.
+            ptr::read(curr)
         }
     }
 
@@ -347,8 +333,8 @@ impl<T> Entry<'_, '_, T> {
         unsafe {
             // ## Safety
             //
-            // `curr` points into initialized element by type invariants
-            self.rem.curr.as_ref()
+            //`Entry` type invatiants ensure that `curr` ptr is valid.
+            &*self.curr_ptr()
         }
     }
 
@@ -358,8 +344,8 @@ impl<T> Entry<'_, '_, T> {
         unsafe {
             // ## Safety
             //
-            // `curr` points into initialized element by type invariants
-            self.rem.curr.as_mut()
+            //`Entry` type invatiants ensure that `curr` ptr is valid.
+            &mut *self.curr_mut()
         }
     }
 
@@ -368,47 +354,50 @@ impl<T> Entry<'_, '_, T> {
     /// Returns `None` if this entry corresponds to the last item in the vec.
     #[inline]
     pub fn peek_next(&mut self) -> Option<&mut T> {
-        if self.rem.is_empty() {
-            return None;
-        }
+        let next = self.rem.curr + 1;
 
-        let next = unsafe {
-            // ## Safety
-            //
-            // `curr` points into Vec's buffer, so +1 can't be UB
-            add(self.rem.curr, 1)
-        };
-
-        if next == self.rem.end {
+        if next >= self.rem.len {
             return None;
         }
 
         unsafe {
             // ## Safety
             //
-            // `curr` points into vec's buffer & into initialized element
-            Some(&mut *next.as_ptr())
+            // We've just checked bounds
+            Some(&mut *self.rem.ptr_mut(next))
         }
+    }
+
+    // private
+
+    fn curr_mut(&mut self) -> *mut T {
+        self.rem.curr_mut()
+    }
+
+    fn curr_ptr(&self) -> *const T {
+        // ## Safety
+        //
+        // `curr` always points to the content of the vector
+        unsafe { self.rem.vec.as_ptr().add(self.rem.curr) }
+    }
+
+    fn slot_mut(&mut self) -> *mut T {
+        self.rem.slot_mut()
     }
 }
 
 impl<T> Drop for Entry<'_, '_, T> {
     fn drop(&mut self) {
-        // Skips element swaping it with the last empty slot.
+        // Skips element swaping it with the first empty slot.
 
         unsafe {
             // ## Safety
             //
             // `Entry` type invariants ensure that `self.rem.curr` points to a valid value,
             // and `self.rem.slot` is writable.
-            self.rem.slot.as_ptr().copy_from(self.rem.curr.as_ptr(), 1);
-
-            // ## Safety
-            //
-            // `Entry` type invariants ensure that both slot `slot` and `curr` are pointing
-            // into the vec buffer, so +1 may not cause UB
-            self.rem.slot = add(self.rem.slot, 1);
-            self.rem.curr = add(self.rem.curr, 1);
+            ptr::copy(self.curr_mut(), self.slot_mut(), 1);
+            self.rem.slot += 1;
+            self.rem.curr += 1;
         }
     }
 }
@@ -429,21 +418,44 @@ impl<T> VecExt<T> for Vec<T> {
     }
 }
 
-/// Safety: same as <*mut T>::add
-unsafe fn add<T>(ptr: NonNull<T>, count: usize) -> NonNull<T> {
-    NonNull::new_unchecked(ptr.as_ptr().add(count))
-}
-
 #[cfg(test)]
 mod tests {
     use crate::VecExt;
 
-    use core::mem;
-    use std::fmt::Debug;
+    use core::{fmt::Debug, mem, ops::Rem};
 
     /// Returns non-copy type that can help miri detect safety bugs
-    fn f(i: i32) -> impl Debug + Eq {
-        i.to_string()
+    fn f(i: i32) -> impl Copy + Debug + Eq + PartialOrd<i32> + Rem<i32, Output = i32> {
+        #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+        struct NoCopy(i32);
+
+        impl PartialEq<i32> for NoCopy {
+            fn eq(&self, other: &i32) -> bool {
+                self.0.eq(other)
+            }
+        }
+
+        impl PartialOrd<i32> for NoCopy {
+            fn partial_cmp(&self, other: &i32) -> Option<core::cmp::Ordering> {
+                self.0.partial_cmp(other)
+            }
+        }
+
+        impl Rem<i32> for NoCopy {
+            type Output = i32;
+
+            fn rem(self, rem: i32) -> i32 {
+                self.0 % rem
+            }
+        }
+
+        NoCopy(i)
+    }
+
+    fn zf(_i: i32) -> impl Debug + Eq {
+        #[derive(Debug, PartialEq, Eq)]
+        struct No;
+        No
     }
 
     #[test]
@@ -499,7 +511,7 @@ mod tests {
 
         mem::forget(rem);
 
-        assert_eq!(vec, []);
+        assert_eq!(vec, [0; 0]);
     }
 
     #[test]
@@ -511,7 +523,7 @@ mod tests {
 
     #[test]
     fn even() {
-        let mut vec = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let mut vec: Vec<_> = (0..10).map(f).collect();
         let mut out = Vec::with_capacity(10);
         let mut rem = vec.removing();
 
@@ -529,7 +541,7 @@ mod tests {
 
     #[test]
     fn break_() {
-        let mut vec = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        let mut vec: Vec<_> = (0..10).map(f).collect();
         let mut rem = vec.removing();
 
         while let Some(entry) = rem.next() {
@@ -547,7 +559,7 @@ mod tests {
 
     #[test]
     fn test() {
-        let mut vec = vec![0, 1, 2];
+        let mut vec: Vec<_> = (0..3).map(f).collect();
 
         {
             let mut rem = vec.removing();
@@ -557,5 +569,19 @@ mod tests {
         }
 
         assert_eq!(vec, [0, 2]);
+    }
+
+    #[test]
+    fn zst() {
+        let mut vec: Vec<_> = (0..3).map(zf).collect();
+
+        {
+            let mut rem = vec.removing();
+            rem.next().unwrap();
+            rem.next().unwrap().remove();
+            rem.next().unwrap();
+        }
+
+        assert_eq!(vec.len(), 2);
     }
 }
