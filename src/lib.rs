@@ -333,7 +333,7 @@ impl<T> Entry<'_, '_, T> {
         unsafe {
             // ## Safety
             //
-            //`Entry` type invatiants ensure that `curr` ptr is valid.
+            //`Entry` type invariants ensure that `curr` ptr is valid.
             &*self.curr_ptr()
         }
     }
@@ -344,7 +344,7 @@ impl<T> Entry<'_, '_, T> {
         unsafe {
             // ## Safety
             //
-            //`Entry` type invatiants ensure that `curr` ptr is valid.
+            //`Entry` type invariants ensure that `curr` ptr is valid.
             &mut *self.curr_mut()
         }
     }
