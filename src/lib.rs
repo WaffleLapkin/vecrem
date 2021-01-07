@@ -112,16 +112,27 @@ use core::{mem::ManuallyDrop, ptr};
 /// assert_eq!(out, [0, 2, 4, 6, 8])
 /// ```
 ///
-/// ## Leak Notes
+/// ## forget behavior
 ///
-/// In the same way as [`Vec::drain_filter`] for efishient work, [`Removing`]
-/// needs to remporary break vec leaving it in incunsisntent state.
-/// The state is made normal in `Drop`, however in rust running destructors is
-/// not guaranteed (see [`mem::forget`]). As such, [`Removing`] sets vec's len
-/// to `0` (and restores it in `Drop`), this means that if [`Removing`] gets
-/// leaked or forgotten - the elements of the vectore are gone too.
+/// In the same way as [`Vec::drain_filter`], for efficient work, [`Removing`]
+/// needs to temporarily break vec's invariants leaving it in an inconsistent
+/// state. The state is made normal in `Drop`.
+///
+/// However in rust running destructors is not guaranteed (see [`mem::forget`],
+/// [`ManuallyDrop`]). As such, on construction [`Removing`] sets vec's len to
+/// `0` (and restores it in `Drop`), this means that if [`Removing`] gets leaked
+/// or forgotten - the elements of the vector are forgotten too.
+///
+/// ```
+/// use vecrem::VecExt;
+///
+/// let mut vec = vec![0, 1, 2, 3, 4];
+/// core::mem::forget(vec.removing());
+/// assert_eq!(vec, []);
+/// ```
 ///
 /// [`mem::forget`]: core::mem::forget
+/// [`ManuallyDrop`]: core::mem::ManuallyDrop
 pub struct Removing<'a, T> {
     // Type invariants:
     // - vec.capacity() >= len
