@@ -65,7 +65,7 @@ use core::{mem::ManuallyDrop, ptr};
 /// vector.
 ///
 /// Essentially overhead of the process is one `ptr::copy` for each ignored
-/// element element + one `ptr::copy` for the not yielded tail.
+/// element + one `ptr::copy` for the not yielded tail.
 ///
 /// For the comparison with manual [`Vec::remove`] see [self#]
 ///
@@ -144,53 +144,55 @@ pub struct Removing<'a, T> {
     slot: usize,
     curr: usize,
     len: usize,
-    /* Example of how this works, step-by-step:
-     *
-     * Imagine vec with items A-F:
-     *
-     * [A, B, C, D, E, F]
-     *
-     * 1. `Removing` is created
-     *
-     * [A, B, C, D, E, F]
-     *  \
-     *  curr, slot
-     *
-     * 2. `.next()` is used, entry is not removed
-     *
-     * [A, B, C, D, E, F]
-     *     \
-     *      curr, slot
-     *
-     * 3. `.next().remove()`
-     *
-     *       slot
-     *      /
-     * [A, _, C, D, E, F]
-     *        \
-     *         curr
-     *
-     * 4. `.next().remove()`
-     *
-     *       slot
-     *      /
-     * [A, _, _, D, E, F]
-     *           \
-     *            curr
-     *
-     * 5. `.next()`
-     *
-     *          slot
-     *         /
-     * [A, D, _, _, E, F]
-     *              \
-     *               curr
-     *
-     * 5. Removing::drop moves the rest of elements & restores `vec`'s len (in this case to 4):
-     *
-     * [A, D, E, F, _, _]
-     */
 }
+
+/* Example of how the lib works, step-by-step:
+ *
+ * Imagine vec with items A-F:
+ *
+ * [A, B, C, D, E, F]
+ *
+ * 1. `Removing` is created
+ *
+ * [A, B, C, D, E, F]
+ *  \
+ *  curr, slot
+ *
+ * 2. `.next()` is used, entry is not removed
+ *
+ * [A, B, C, D, E, F]
+ *     \
+ *      curr, slot
+ *
+ * 3. `.next().remove()`
+ *
+ *       slot
+ *      /
+ * [A, _, C, D, E, F]
+ *        \
+ *         curr
+ *
+ * 4. `.next().remove()`
+ *
+ *       slot
+ *      /
+ * [A, _, _, D, E, F]
+ *           \
+ *            curr
+ *
+ * 5. `.next()`
+ *
+ *          slot
+ *         /
+ * [A, D, _, _, E, F]
+ *              \
+ *               curr
+ *
+ * 5. Removing::drop moves the rest of elements & restores `vec`'s len (in
+ *    this case to 4):
+ *
+ * [A, D, E, F, _, _]
+ */
 
 impl<'a, T> Removing<'a, T> {
     /// Creates new [`Removing`] instance from given vec.
