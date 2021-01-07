@@ -6,7 +6,6 @@
 [![crates.io](https://img.shields.io/crates/v/vecrem.svg)](https://crates.io/crates/vecrem)
 [![LICENSE](https://img.shields.io/badge/license-WTFPL-blueviolet.svg)](LICENSE)
 
-
 Cursor-like helper which allows removing elements from vector without moving the tail every time.
 
 ```toml

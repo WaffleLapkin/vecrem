@@ -1,8 +1,23 @@
 [package]
 name = "vecrem"
+description = "Cursor-like structure for fast iterative removing of elements from a vec"
 version = "0.1.0"
 authors = ["Waffle <waffle.lapkin@gmail.com>"]
 edition = "2018"
+
+license-file = "LICENSE"
+repository = "https://github.com/WaffleLapkin/vecrem/"
+homepage = "https://github.com/WaffleLapkin/vecrem/"
+documentation = "https://docs.rs/vecrem/"
+readme = "README.md"
+
+keywords = ["no_std", "vec", "vector", "drain", "remove"]
+categories = ["no-std"]
+
+exclude = [
+    ".github/*",
+    "netlify.toml",
+]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
