@@ -125,7 +125,7 @@ use core::{mem::ManuallyDrop, ptr};
 pub struct Removing<'a, T> {
     // Type invariants:
     // - vec.capacity() >= len
-    // - vec[..slot] is initialized (note: dye to safety guarantees vec.len is set to 0, so this is
+    // - vec[..slot] is initialized (note: due to safety guarantees vec.len is set to 0, so this is
     //   not 'real' indexing)
     // - vec[curr..len] is initialized
     // - vec[..len] is the same allocation
