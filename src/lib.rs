@@ -429,7 +429,7 @@ impl<T> Entry<'_, '_, T> {
 
 impl<T> Drop for Entry<'_, '_, T> {
     fn drop(&mut self) {
-        // Skips element swaping it with the first empty slot.
+        // Skips element swapping it with the first empty slot.
 
         unsafe {
             // ## Safety
