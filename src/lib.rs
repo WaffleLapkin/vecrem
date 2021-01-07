@@ -301,6 +301,34 @@ impl<T> Drop for Removing<'_, T> {
 /// [`remove`]: Entry::remove
 /// [read]: Entry::value
 /// [mutate]: Entry::value_mut
+///
+/// ## forget behavior
+///
+/// When [`Entry`] destructor (drop) is not runned (this can be achieved via
+/// [`mem::forget`], [`ManuallyDrop`], etc) the entry is not skiped and the next
+/// call to [`Removing::next`] returns the same entry.
+///
+/// ```
+/// use core::mem;
+/// use vecrem::VecExt;
+///
+/// let mut vec = vec![1, 2, 3];
+/// {
+///     let mut rem = vec.removing();
+///
+///     let a = rem.next().unwrap();
+///     assert_eq!(a.value(), &1);
+///     mem::forget(a);
+///
+///     let b = rem.next().unwrap();
+///     assert_eq!(b.value(), &1);
+///     mem::forget(b);
+/// }
+/// assert_eq!(vec, [1, 2, 3]);
+/// ```
+///
+/// [`mem::forget`]: core::mem::forget
+/// [`ManuallyDrop`]: core::mem::ManuallyDrop
 pub struct Entry<'a, 'rem, T> {
     // Type invariants: !self.rem.is_empty()
     rem: &'a mut Removing<'rem, T>,
@@ -482,14 +510,33 @@ mod tests {
     #[test]
     fn forget_entry() {
         let mut vec = vec![f(0)];
-        let mut rem = vec.removing();
-        let mut timeout = 0..100;
+        {
+            let mut rem = vec.removing();
+            let mut timeout = 0..100;
 
-        while let (Some(entry), Some(_)) = (rem.next(), timeout.next()) {
-            mem::forget(entry)
+            while let (Some(entry), Some(_)) = (rem.next(), timeout.next()) {
+                mem::forget(entry)
+            }
+
+            assert_eq!(timeout.len(), 0);
         }
+        assert_eq!(vec, [f(0)]);
+    }
 
-        assert_eq!(timeout.len(), 0);
+    #[test]
+    fn zforget_entry() {
+        let mut vec = vec![zf(0)];
+        {
+            let mut rem = vec.removing();
+            let mut timeout = 0..100;
+
+            while let (Some(entry), Some(_)) = (rem.next(), timeout.next()) {
+                mem::forget(entry)
+            }
+
+            assert_eq!(timeout.len(), 0);
+        }
+        assert_eq!(vec, [zf(0)]);
     }
 
     #[test]
