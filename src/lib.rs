@@ -425,8 +425,8 @@ mod tests {
     use core::{fmt::Debug, mem, ops::Rem};
 
     /// Returns non-copy type that can help miri detect safety bugs
-    fn f(i: i32) -> impl Copy + Debug + Eq + PartialOrd<i32> + Rem<i32, Output = i32> {
-        #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    fn f(i: i32) -> impl Clone + Debug + Eq + PartialOrd<i32> + Rem<i32, Output = i32> {
+        #[derive(Clone, Debug, PartialEq, Eq)]
         struct NoCopy(i32);
 
         impl PartialEq<i32> for NoCopy {
@@ -528,7 +528,7 @@ mod tests {
         let mut rem = vec.removing();
 
         while let Some(entry) = rem.next() {
-            if *entry.value() % 2 == 0 {
+            if entry.value().clone() % 2 == 0 {
                 out.push(entry.remove());
             }
         }
