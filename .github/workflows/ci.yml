@@ -17,7 +17,7 @@ jobs:
           - stable
           - beta
           - nightly
-          - 1.47.0
+          - 1.36.0
     
         include:
           - rust: stable
@@ -29,7 +29,7 @@ jobs:
           - rust: nightly
             features: "--all-features"
             test_args: ""
-          - rust: 1.47.0
+          - rust: 1.36.0
             features: ""
             test_args: "--tests"
 
